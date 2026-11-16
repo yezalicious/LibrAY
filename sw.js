@@ -1,5 +1,5 @@
 // LibrAY offline support: the app itself opens without a connection, and covers already seen stay available.
-const SHELL = 'libray-shell-v3';
+const SHELL = 'libray-shell-v4';
 const MEDIA = 'libray-media-v1';
 const SHELL_FILES = ['./', 'index.html', 'zxing.min.js', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
 const MEDIA_HOSTS = ['covers.openlibrary.org', 'archive.org', 'books.google.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
