@@ -274,9 +274,27 @@ label.eyebrow{display:block;margin-bottom:6px;text-align:left}
   </form>
 </div>
 
+<!-- Sign in (only when syncing is set up) -->
+<div id="signin" class="overlay solid" hidden role="dialog" aria-modal="true" aria-labelledby="signin-h">
+  <form class="center" id="signin-form" style="min-height:100%">
+    <h1 class="wordmark" id="signin-h">Libr<span>AY</span></h1>
+    <div class="rule"></div>
+    <p>Sign in so your shelves and your partner's stay in step.</p>
+    <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:16px">
+      <div><label class="eyebrow" for="signin-email">Email</label><input class="field" id="signin-email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></div>
+      <div><label class="eyebrow" for="signin-pass">Password</label><input class="field" id="signin-pass" type="password" autocomplete="current-password"></div>
+    </div>
+    <p id="signin-msg" role="alert" style="min-height:1.4em;font-style:normal;color:var(--parch)"></p>
+    <button class="btn solid" type="submit" id="signin-go">Sign in</button>
+    <button type="button" class="link" data-act="signin-reset">Set or reset my password</button>
+    <button type="button" class="link quiet" data-act="signin-skip">Not now</button>
+  </form>
+</div>
+
 <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" hidden>
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script src="firebase-config.js"></script>
 <script src="zxing.min.js"></script>
 <script>
 'use strict';
@@ -317,7 +335,7 @@ function cleanBook(b) {
     published: String(b.published || '').slice(0, 60), pages: Number(b.pages) > 0 ? Math.round(Number(b.pages)) : 0,
     spine: safeSpine(b.spine), hmm: Number(b.hmm) > 0 ? Number(b.hmm) : 0, wmm: Number(b.wmm) > 0 ? Number(b.wmm) : 0, tmm: Number(b.tmm) > 0 ? Number(b.tmm) : 0, dimsChecked: !!b.dimsChecked,
     cover: safeCover(b.cover), ratio: clamp(Number(b.ratio) || 0.66, 0.5, 0.85), owned: b.owned !== false, status,
-    halfStars: clamp(Math.round(Number(b.halfStars) || 0), 0, 10), added: String(b.added || new Date().toISOString()),
+    halfStars: clamp(Math.round(Number(b.halfStars) || 0), 0, 10), added: String(b.added || new Date().toISOString()), updatedAt: String(b.updatedAt || ''),
     notes: Array.isArray(b.notes) ? b.notes.slice(0, 500).map(n => ({id: String(n.id || uid()), text: String(n.text || '').slice(0, 20000), createdAt: String(n.createdAt || new Date().toISOString())})) : []
   };
 }
@@ -331,7 +349,8 @@ const state = {
   partner: cleanLibrary(load('libray.partner')),
   tab: 'mine', entered: false, scroll: {mine: 0, visit: 0}
 };
-const saveMine = () => store('libray.mine', state.mine);
+const saveMine = () => { const ok = store('libray.mine', state.mine); if (window.librarySync) window.librarySync.changed(); return ok; };
+const syncOn = () => !!(window.librarySync && window.librarySync.signedIn());
 const booksOf = readOnly => readOnly ? (state.partner ? state.partner.books : []) : state.mine.books;
 
 /* ---------- shelves ---------- */
@@ -402,19 +421,23 @@ function render() {
   $('#tab-mine').setAttribute('aria-current', visit ? 'false' : 'page');
   $('#tab-visit').setAttribute('aria-current', visit ? 'page' : 'false');
   if (!visit) {
-    head.innerHTML = `<h1 class="wordmark">Libr<span>AY</span></h1><button class="icon" data-act="send" aria-label="Send my library to my partner">${ICON.share}</button>`;
-    main.innerHTML = shelvesHTML(state.mine.books);
+    head.innerHTML = `<h1 class="wordmark">Libr<span>AY</span></h1>` + (syncOn() ? '' : `<button class="icon" data-act="send" aria-label="Send my library to my partner">${ICON.share}</button>`);
+    main.innerHTML = shelvesHTML(state.mine.books) + (window.librarySync ? window.librarySync.footHTML() : '');
   } else if (!state.partner) {
     head.innerHTML = '';
-    main.innerHTML = `<div class="center"><h2>The doors are closed.</h2><p>Ask your partner to send their library from their LibrAY, save the file, then open it here.</p><button class="btn" data-act="import">Open a library file</button></div>`;
+    main.innerHTML = syncOn()
+      ? `<div class="center"><h2>The doors are closed.</h2><p>Your partner's library opens here as soon as they sign in to LibrAY on their phone.</p></div>`
+      : `<div class="center"><h2>The doors are closed.</h2><p>${window.librarySync ? 'Sign in to visit your partner\'s library, or open a library file they sent you.' : 'Ask your partner to send their library from their LibrAY, save the file, then open it here.'}</p>` +
+        (window.librarySync ? `<button class="btn solid" data-act="signin-open">Sign in</button>` : '') + `<button class="btn" data-act="import">Open a library file</button></div>`;
   } else if (!state.entered) {
     head.innerHTML = '';
     main.innerHTML = `<div class="center"><div class="monogram" aria-hidden="true">AY</div><div class="eyebrow" style="margin-top:8px">The Library of</div><h2>${esc(state.partner.ownerName || 'your partner')}</h2><div class="rule"></div>` +
       `<button class="btn" data-act="enter" style="font-style:italic">Enter quietly</button>` +
-      `<p style="margin-top:18px;font-size:15px">${state.partner.exportedAt ? 'Copy from ' + esc(fmtDate(state.partner.exportedAt)) : ''}</p><button class="link" data-act="import">Open a newer copy</button></div>`;
+      (state.partner.live ? `<p style="margin-top:18px;font-size:15px">Kept up to date as they add books.</p></div>`
+        : `<p style="margin-top:18px;font-size:15px">${state.partner.exportedAt ? 'Copy from ' + esc(fmtDate(state.partner.exportedAt)) : ''}</p><button class="link" data-act="import">Open a newer copy</button></div>`);
   } else {
-    head.innerHTML = `<div style="min-width:0"><div class="eyebrow">The Library of</div><h1 class="wordmark small">${esc(state.partner.ownerName || 'your partner')}</h1></div><button class="icon" data-act="import" aria-label="Open a newer copy">${ICON.tray}</button>`;
-    main.innerHTML = shelvesHTML(state.partner.books) + `<p class="fine">You are a guest here. ${state.partner.exportedAt ? 'Copy from ' + esc(fmtDate(state.partner.exportedAt)) + '.' : ''}</p>`;
+    head.innerHTML = `<div style="min-width:0"><div class="eyebrow">The Library of</div><h1 class="wordmark small">${esc(state.partner.ownerName || 'your partner')}</h1></div>` + (state.partner.live ? '' : `<button class="icon" data-act="import" aria-label="Open a newer copy">${ICON.tray}</button>`);
+    main.innerHTML = shelvesHTML(state.partner.books) + `<p class="fine">You are a guest here. ${state.partner.live ? 'New books appear as they are shelved.' : state.partner.exportedAt ? 'Copy from ' + esc(fmtDate(state.partner.exportedAt)) + '.' : ''}</p>`;
   }
   main.scrollTop = state.scroll[state.tab] || 0;
 }
@@ -853,6 +876,7 @@ $('#import-file').addEventListener('change', async e => {
   try { lib = cleanLibrary(JSON.parse(await file.text())); } catch (err) {}
   if (!lib) { toast('That file is not a LibrAY library.'); return; }
   if (!lib.exportedAt) lib.exportedAt = new Date().toISOString();
+  if (syncOn() && state.partner && state.partner.live) { toast('Your partner\'s library is already kept up to date.'); return; }
   state.partner = lib; store('libray.partner', lib);
   state.tab = 'visit'; state.entered = false; state.scroll.visit = 0; render();
 });
@@ -891,6 +915,7 @@ document.addEventListener('click', e => {
     case 'note-remove': removeNote(); break;
     case 'remove-ask': $('#bv-remove').innerHTML = `<span style="font-style:italic;color:var(--dust)">Remove it and its notes?</span><button class="link danger" data-act="remove-yes">Remove</button><button class="link" data-act="remove-no">Keep</button>`; break;
     case 'remove-no': refreshBook(); break;
+    default: if (window.librarySync) window.librarySync.act(act, t); break;
     case 'remove-yes': state.mine.books = state.mine.books.filter(x => x.id !== bv.id); saveMine(); closeBook(); break;
   }
 });
@@ -908,7 +933,7 @@ document.addEventListener('submit', e => {
   } else if (id === 'manual-form') {
     const title = $('#manual-title').value.trim(); if (!title) { $('#manual-title').focus(); return; }
     shelve({title, author: $('#manual-author').value.trim()});
-  }
+  } else if (window.librarySync) window.librarySync.submit(id);
 });
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
@@ -920,10 +945,11 @@ document.addEventListener('keydown', e => {
 
 /* ---------- start ---------- */
 render();
-if (!state.mine.ownerName) { showOverlay($('#welcome')); }
+if (!state.mine.ownerName && !window.LIBRAY_FIREBASE) { showOverlay($('#welcome')); }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
 backfillDims();
+if (window.LIBRAY_FIREBASE) { const sy = document.createElement('script'); sy.src = 'sync.js'; document.body.appendChild(sy); }
 window.__libray = {state, decodeCanvas, lookup, normalizeISBN, render};
 </script>
 </body>

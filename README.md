@@ -32,6 +32,10 @@ Removing the icon from the Home Screen deletes the books stored in it.
 - **Notes**: Add a note in the book view. Tap a note to edit or remove it.
 - **Visit your partner's library**: in Mine, tap the share icon and AirDrop the file. Your partner saves it to Files, opens the Visit tab and chooses it. It is a snapshot; send a new one whenever you like.
 
+## Syncing (optional)
+
+With a Firebase project set in `firebase-config.js`, each person signs in once and both libraries stay up to date on both phones; the Visit tab shows the partner's shelves live. Access is limited to two email addresses by the Firestore security rules set in the Firebase console. With `window.LIBRAY_FIREBASE = null` the app works on its own, as before.
+
 ## Things to know
 
 - Books are drawn at their real height and thickness when Open Library records them; otherwise thickness comes from the page count and height is a standard paperback.
@@ -45,5 +49,6 @@ Removing the icon from the Home Screen deletes the books stored in it.
 |---|---|
 | `index.html` | The whole app |
 | `zxing.min.js` | Barcode reader (ZXing, Apache 2.0 licence). Safari has no built-in one. |
+| `sync.js`, `firebase-config.js`, `firebase/` | Syncing through Firebase (Google's web SDK, Apache 2.0 licence) |
 | `sw.js` | Lets the app open offline and keeps covers you have already seen |
 | `manifest.webmanifest`, `icon-*.png` | Home Screen name and icon |
