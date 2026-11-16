@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icon-180.png?v=3">
 <link rel="icon" href="icon-180.png?v=3">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,600;1,400&family=La+Belle+Aurore&display=swap">
 <style>
 /* Layout: one bookcase per tab. Shelves stack vertically; books stand spine-out; a tapped book
    leaves the shelf, turns to its cover and settles above its title. */
@@ -413,13 +413,23 @@ function spineHTML(b) {
   return `<button class="spine${ghost ? ' ghost' : ''}${photo ? ' photo' : ''}" data-act="open" data-id="${esc(b.id)}" style="${style}" aria-label="${label}">` +
     `<span class="band"></span><span class="label"><span class="t">${esc(b.title)}</span></span><span class="band"></span></button>`;
 }
-function shelvesHTML(books) {
-  return SHELVES.map(([key, name, hint]) => {
-    const shelf = books.filter(b => b.status === key).sort((a, b) => (b.owned - a.owned) || a.added.localeCompare(b.added));
+// letters: folded notes left by the partner, tucked between the books of this library.
+function shelvesHTML(books, letters) {
+  const shelves = SHELVES.map(([key]) => books.filter(b => b.status === key).sort((a, b) => (b.owned - a.owned) || a.added.localeCompare(b.added)));
+  const filled = shelves.map((s, i) => s.length ? i : -1).filter(i => i >= 0);
+  const tucked = shelves.map(() => []);
+  (letters || []).forEach(l => {
+    const h = hash(l.id), si = filled.length ? filled[h % filled.length] : 0;
+    tucked[si].push([(h >>> 8) % (shelves[si].length + 1), l]);
+  });
+  return SHELVES.map(([key, name, hint], i) => {
+    const shelf = shelves[i];
     const count = shelf.length ? `${shelf.length} ${shelf.length === 1 ? 'volume' : 'volumes'}` : '';
+    const slots = shelf.map(b => `<div class="slot" data-slot="${esc(b.id)}">${spineHTML(b)}</div>`);
+    tucked[i].sort((a, b) => b[0] - a[0]).forEach(([pos, l]) => slots.splice(pos, 0,
+      `<div class="slot"><button class="letter${l.opened ? ' read' : ''}" data-act="letter-open" data-id="${esc(l.id)}" style="--tilt:${(hash(l.id) % 7) - 3}deg" aria-label="A folded note"></button></div>`));
     return `<section class="shelf"><h2 class="plate eyebrow"><span>${name}</span><span class="count">${count}</span></h2>` +
-      `<div class="rows">${shelf.map(b => `<div class="slot" data-slot="${esc(b.id)}">${spineHTML(b)}</div>`).join('')}` +
-      `${shelf.length ? '' : `<p class="hint">${hint}</p>`}</div></section>`;
+      `<div class="rows">${slots.join('')}${slots.length ? '' : `<p class="hint">${hint}</p>`}</div></section>`;
   }).join('');
 }
 const ICON = {
@@ -434,7 +444,7 @@ function render() {
   $('#tab-visit').setAttribute('aria-current', visit ? 'page' : 'false');
   if (!visit) {
     head.innerHTML = `<h1 class="wordmark">Libr<span>AY</span></h1>` + (syncOn() ? '' : `<button class="icon" data-act="send" aria-label="Send my library to my partner">${ICON.share}</button>`);
-    main.innerHTML = shelvesHTML(state.mine.books) + (window.librarySync ? window.librarySync.footHTML() : '');
+    main.innerHTML = shelvesHTML(state.mine.books, window.keepsakes ? window.keepsakes.shelfLetters() : []) + (window.librarySync ? window.librarySync.footHTML() : '');
   } else if (!state.partner) {
     head.innerHTML = '';
     main.innerHTML = syncOn()
@@ -448,7 +458,7 @@ function render() {
       (state.partner.live ? `<p style="margin-top:18px;font-size:15px">Kept up to date as they add books.</p></div>`
         : `<p style="margin-top:18px;font-size:15px">${state.partner.exportedAt ? 'Copy from ' + esc(fmtDate(state.partner.exportedAt)) : ''}</p><button class="link" data-act="import">Open a newer copy</button></div>`);
   } else {
-    head.innerHTML = `<div style="min-width:0"><div class="eyebrow">The Library of</div><h1 class="wordmark small">${esc(state.partner.ownerName || 'your partner')}</h1></div>` + (state.partner.live ? '' : `<button class="icon" data-act="import" aria-label="Open a newer copy">${ICON.tray}</button>`);
+    head.innerHTML = `<div style="min-width:0"><div class="eyebrow">The Library of</div><h1 class="wordmark small">${esc(state.partner.ownerName || 'your partner')}</h1></div>` + (state.partner.live ? (window.keepsakes ? window.keepsakes.visitButtonHTML() : '') : `<button class="icon" data-act="import" aria-label="Open a newer copy">${ICON.tray}</button>`);
     main.innerHTML = shelvesHTML(state.partner.books) + `<p class="fine">You are a guest here. ${state.partner.live ? 'New books appear as they are shelved.' : state.partner.exportedAt ? 'Copy from ' + esc(fmtDate(state.partner.exportedAt)) + '.' : ''}</p>`;
   }
   main.scrollTop = state.scroll[state.tab] || 0;
@@ -484,6 +494,7 @@ function bvContentHTML(b, ro) {
   let h = `<div class="bv-slot"></div><h2 class="bv-title" id="bv-title">${esc(b.title)}</h2>`;
   if (b.author) h += `<p class="bv-author">${esc(b.author)}</p>`;
   h += `<div class="rule"></div>`;
+  if (window.keepsakes) h += window.keepsakes.bookHTML(b, ro);
   if (b.owned) {
     if (edition || b.isbn) h += `<p class="edition">${edition}${edition && b.isbn ? '<br>' : ''}${b.isbn ? 'ISBN ' + esc(b.isbn) : ''}</p>`;
     h += ro
@@ -546,6 +557,7 @@ function openBook(id, el) {
   book.innerHTML = bookFacesHTML(b);
   $('#bv-content').innerHTML = bvContentHTML(b, readOnly);
   bindStars();
+  if (window.keepsakes) window.keepsakes.bookOpened(b, readOnly);
   view.hidden = false; scroll.scrollTop = 0;
   const o = view.getBoundingClientRect(), slot = $('.bv-slot').getBoundingClientRect();
   const from = shelfPose(r, o);
@@ -1035,7 +1047,7 @@ document.addEventListener('click', e => {
     case 'note-remove': removeNote(); break;
     case 'remove-ask': $('#bv-remove').innerHTML = `<span style="font-style:italic;color:var(--dust)">Remove it and its notes?</span><button class="link danger" data-act="remove-yes">Remove</button><button class="link" data-act="remove-no">Keep</button>`; break;
     case 'remove-no': refreshBook(); break;
-    default: if (window.librarySync) window.librarySync.act(act, t); break;
+    default: if (window.keepsakes && window.keepsakes.act(act, t)) break; if (window.librarySync) window.librarySync.act(act, t); break;
     case 'remove-yes': state.mine.books = state.mine.books.filter(x => x.id !== bv.id); saveMine(); closeBook(); break;
   }
 });
@@ -1070,6 +1082,7 @@ if (navigator.storage && navigator.storage.persist) navigator.storage.persist().
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
 backfillDims();
 if (window.LIBRAY_FIREBASE) { const sy = document.createElement('script'); sy.src = 'sync.js'; document.body.appendChild(sy); }
+{ const ks = document.createElement('script'); ks.src = 'keepsakes.js'; document.body.appendChild(ks); }
 window.__libray = {state, decodeCanvas, lookup, normalizeISBN, render};
 </script>
 </body>

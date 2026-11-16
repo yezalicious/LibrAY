@@ -8,7 +8,8 @@
     synced: new Map(),      // book id -> last JSON known to match the cloud
     nameSynced: null,       // owner name last written to the cloud
     partnerUid: null, partnerName: '', partnerBooks: new Map(),
-    stop: []                // listeners to detach on sign-out
+    stop: [],               // listeners to detach on sign-out
+    meDoc: {}, partnerDoc: {}, mePending: 0
   };
   const ser = b => JSON.stringify(Object.assign({}, cleanBook(b), {updatedAt: undefined}));
   const now = () => new Date().toISOString();
@@ -87,6 +88,10 @@
       if (!state.mine.ownerName && S.ready) openWelcomeIfIdle();
       push();
       const other = snap.docs.find(d => d.id !== user.uid);
+      // Notes and flowers travel in each person's own record.
+      if (me && !S.mePending) S.meDoc = me.data();
+      S.partnerDoc = other ? other.data() : {};
+      if (window.keepsakes) window.keepsakes.refresh();
       if (!other) return;
       S.partnerName = String(other.data().ownerName || '').slice(0, 80);
       if (other.id !== S.partnerUid) watchPartner(other.id);
@@ -186,6 +191,7 @@
 
   function detach() {
     S.stop.forEach(fn => { try { fn(); } catch (e) {} });
+    S.meDoc = {}; S.partnerDoc = {}; S.mePending = 0;
     S.stop = []; S.ready = false; S.usersSeen = false; S.synced = new Map(); S.nameSynced = null;
   }
 
@@ -248,6 +254,15 @@
 
   window.librarySync = {
     signedIn: () => !!S.user,
+    social: () => ({me: S.meDoc || {}, partner: S.partnerDoc || {}, partnerName: S.partnerName, hasPartner: !!S.partnerUid}),
+    // Changes fields of my own record (sent notes and flowers, what I have found).
+    patchMe(fields) {
+      if (!S.user) return Promise.reject(new Error('signed out'));
+      S.meDoc = Object.assign({}, S.meDoc, fields);
+      S.mePending++;
+      const done = () => { S.mePending = Math.max(0, S.mePending - 1); };
+      return S.db.collection('users').doc(S.user.uid).set(JSON.parse(JSON.stringify(fields)), {merge: true}).then(done, e => { done(); syncError(e); throw e; });
+    },
     changed: push,
     footHTML() {
       if (S.loading) return '';

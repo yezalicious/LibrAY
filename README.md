@@ -36,6 +36,11 @@ Removing the icon from the Home Screen deletes the books stored in it.
 
 With a Firebase project set in `firebase-config.js`, each person signs in once and both libraries stay up to date on both phones; the Visit tab shows the partner's shelves live. Access is limited to two email addresses by the Firestore security rules set in the Firebase console. With `window.LIBRAY_FIREBASE = null` the app works on its own, as before.
 
+## Notes and flowers (need syncing)
+
+- **A folded note**: in the Visit tab, tap the page icon and write up to 200 words. It is tucked between the books of your partner's library, where they find it and unfold it. Read notes sit lower; a note can be thrown away by the person who received it.
+- **A flower**: in the Visit tab, open a book your partner is reading and tap "Hide a flower in this book". One flower a week. They get a card in LibrAY with a flower, a love quote and a hint, and the flower falls out when they open that book.
+
 ## Things to know
 
 - Books are drawn at their real height and thickness when Open Library records them; otherwise thickness comes from the page count and height is a standard paperback.
@@ -51,5 +56,6 @@ With a Firebase project set in `firebase-config.js`, each person signs in once a
 | `zxing.min.js` | Barcode reader (ZXing, Apache 2.0 licence). Safari has no built-in one. |
 | `sync.js`, `firebase-config.js`, `firebase/` | Syncing through Firebase (Google's web SDK, Apache 2.0 licence) |
 | `spine-scan.js` | Finds the spine's edges in the camera image and straightens the photo |
+| `keepsakes.js` | Folded notes and pressed flowers |
 | `sw.js` | Lets the app open offline and keeps covers you have already seen |
 | `manifest.webmanifest`, `icon-*.png` | Home Screen name and icon |
