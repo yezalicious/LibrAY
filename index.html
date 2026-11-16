@@ -181,9 +181,18 @@ label.eyebrow{display:block;margin-bottom:6px;text-align:left}
 #toast{position:fixed;z-index:50;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 96px);transform:translateX(-50%);max-width:86vw;background:var(--walnut);border:1px solid rgba(176,141,87,.6);border-radius:8px;padding:10px 16px;font-size:16px;text-align:center;opacity:0;pointer-events:none;transition:opacity .3s}
 #toast.on{opacity:1}
 
-#spine-guide{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);border:1px solid rgba(232,220,196,.9);border-radius:4px;box-shadow:0 0 0 2000px rgba(12,10,9,.55)}
-.shot{display:flex;gap:16px;align-items:center}
-.shot img{height:120px;width:auto;max-width:90px;border-radius:2px;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+#spine-still{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#spine-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+#spine-overlay.edit{pointer-events:auto;touch-action:none}
+#spine-overlay .shade{fill:rgba(12,10,9,.5);fill-rule:evenodd}
+#spine-overlay polygon{fill:rgba(176,141,87,.12);stroke:#E8DCC4;stroke-width:2;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+#spine-overlay.locked polygon{fill:rgba(176,141,87,.3);stroke:#B08D57;stroke-width:3}
+#spine-overlay .handle{fill:rgba(20,17,15,.35);stroke:#E8DCC4;stroke-width:2;vector-effect:non-scaling-stroke;cursor:grab}
+#spine-overlay .dot{fill:#B08D57;pointer-events:none}
+.scanstate{display:flex;align-items:center;gap:10px}
+.scanstate i{width:10px;height:10px;border-radius:50%;background:var(--dust);flex:none}
+.scanstate.seen i{background:var(--parch)}
+.scanstate.locked i{background:var(--brass)}
 </style>
 </head>
 <body>
@@ -256,7 +265,8 @@ label.eyebrow{display:block;margin-bottom:6px;text-align:left}
   <div id="scan-stage">
     <video id="scan-video" playsinline muted></video>
     <div class="reticle" id="scan-reticle"></div>
-    <div id="spine-guide" hidden></div>
+    <img id="spine-still" alt="" hidden>
+    <svg id="spine-overlay" hidden aria-hidden="true"></svg>
   </div>
   <div id="scan-panel" aria-live="polite"></div>
 </div>
@@ -296,6 +306,7 @@ label.eyebrow{display:block;margin-bottom:6px;text-align:left}
 
 <script src="firebase-config.js"></script>
 <script src="zxing.min.js"></script>
+<script src="spine-scan.js"></script>
 <script>
 'use strict';
 /* ---------- helpers ---------- */
@@ -333,7 +344,7 @@ function cleanBook(b) {
     id: String(b.id || uid()), title: String(b.title || 'Untitled').slice(0, 300), author: String(b.author || '').slice(0, 300),
     isbn: String(b.isbn || '').replace(/[^0-9X]/gi, '').slice(0, 13), publisher: String(b.publisher || '').slice(0, 200),
     published: String(b.published || '').slice(0, 60), pages: Number(b.pages) > 0 ? Math.round(Number(b.pages)) : 0,
-    spine: safeSpine(b.spine), hmm: Number(b.hmm) > 0 ? Number(b.hmm) : 0, wmm: Number(b.wmm) > 0 ? Number(b.wmm) : 0, tmm: Number(b.tmm) > 0 ? Number(b.tmm) : 0, dimsChecked: !!b.dimsChecked,
+    spine: safeSpine(b.spine), sr: clamp(Number(b.sr) || 0, 0, 0.7), hmm: Number(b.hmm) > 0 ? Number(b.hmm) : 0, wmm: Number(b.wmm) > 0 ? Number(b.wmm) : 0, tmm: Number(b.tmm) > 0 ? Number(b.tmm) : 0, dimsChecked: !!b.dimsChecked,
     cover: safeCover(b.cover), ratio: clamp(Number(b.ratio) || 0.66, 0.5, 0.85), owned: b.owned !== false, status,
     halfStars: clamp(Math.round(Number(b.halfStars) || 0), 0, 10), added: String(b.added || new Date().toISOString()), updatedAt: String(b.updatedAt || ''),
     notes: Array.isArray(b.notes) ? b.notes.slice(0, 500).map(n => ({id: String(n.id || uid()), text: String(n.text || '').slice(0, 20000), createdAt: String(n.createdAt || new Date().toISOString())})) : []
@@ -359,7 +370,8 @@ const MM = 1.1; // screen pixels per millimetre on the shelf
 function physical(b) {
   const ghostH = 180 + hash(String(b.id || b.title || '')) % 30;
   const h = clamp(b.hmm || (b.owned === false ? ghostH : 198), 110, 240);
-  const t = clamp(b.tmm || (b.pages ? b.pages * 0.055 + 4 : 20), 5, 80);
+  // A straightened spine photo knows the book's own proportions: they beat the catalogue.
+  const t = (b.sr && b.spine) ? clamp(h * b.sr, 4, 90) : clamp(b.tmm || (b.pages ? b.pages * 0.055 + 4 : 20), 5, 80);
   return {h, t};
 }
 function spineDims(b) {
@@ -740,7 +752,9 @@ function scanPanel(mode, extra) {
   scan.mode = mode;
   const p = $('#scan-panel'), typed = `<button class="link quiet" data-act="scan-type">Type the ISBN instead</button>`;
   $('#scan-reticle').hidden = mode !== 'scanning';
-  $('#spine-guide').hidden = mode !== 'spine';
+  $('#spine-overlay').toggleAttribute('hidden', mode !== 'spine' && mode !== 'spineadjust'); // an SVG has no .hidden property
+  $('#spine-still').hidden = mode !== 'spineadjust';
+  if (mode !== 'spine') stopSpineLoop();
   $('#scan-stage').hidden = !scan.stream;
   if (mode === 'starting') p.innerHTML = `<p>Waking the camera.</p>`;
   else if (mode === 'scanning') p.innerHTML = `<p class="strong">Hold the barcode on the back cover inside the frame.</p><p>The barcode identifies the exact edition.</p>${typed}`;
@@ -753,13 +767,12 @@ function scanPanel(mode, extra) {
     p.innerHTML = `<div class="found"><div class="thumb" style="--c:${c};${f.cover ? `background-image:url('${f.cover}')` : ''}"></div><div class="meta"><b>${esc(f.title)}</b><i>${esc(f.author)}</i><small>${edition}</small></div></div>` +
       `<div class="rowbtns"><button class="btn solid" data-act="spine-start">Photograph the spine</button><button class="link" data-act="scan-shelve">Shelve without it</button><button class="link quiet" data-act="scan-again">Scan again</button></div>`;
   } else if (mode === 'spine') {
-    p.innerHTML = `<p class="strong">Stand the book upright and fit its spine inside the frame.</p><p>Move closer or further until the edges line up.</p>` +
-      `<div class="rowbtns"><button class="btn solid" data-act="spine-shoot">Take the photo</button><button class="link quiet" data-act="spine-skip">${scan.spineFor ? 'Close' : 'Shelve without it'}</button></div>`;
-    const st = $('#scan-stage').getBoundingClientRect(), ph = physical(spineSubject());
-    const gh = Math.min(st.height * 0.82, (st.width * 0.7) * ph.h / ph.t), gw = Math.max(26, gh * ph.t / ph.h);
-    const g = $('#spine-guide'); g.style.height = gh + 'px'; g.style.width = gw + 'px';
-  } else if (mode === 'spinecheck') {
-    p.innerHTML = `<div class="shot"><img src="${scan.shot}" alt="The spine photo"><p class="strong">Use this for the shelf?</p></div>` +
+    p.innerHTML = `<p class="scanstate" id="spine-state"><i></i><span>Looking for the spine</span></p>` +
+      `<p>Stand the book upright against a plain background and point the camera straight at its spine. The photo is taken when you hold still.</p>` +
+      `<div class="rowbtns"><button class="btn" data-act="spine-shoot">Take it now</button><button class="link quiet" data-act="spine-skip">${scan.spineFor ? 'Close' : 'Shelve without it'}</button></div>`;
+    startSpineLoop();
+  } else if (mode === 'spineadjust') {
+    p.innerHTML = `<p class="strong">Drag any corner that is off onto the corner of the spine.</p>` +
       `<div class="rowbtns"><button class="btn solid" data-act="spine-use">Use it</button><button class="link" data-act="spine-start">Retake</button></div>`;
   } else if (mode === 'dupe') p.innerHTML = `<p class="strong">${esc(extra)} is already on your shelves.</p><button class="link" data-act="scan-again">Scan another</button>`;
   else if (mode === 'offline') p.innerHTML = `<p class="strong">The catalogue could not be reached.</p><p>Check the connection, then try again.</p><div class="rowbtns"><button class="btn" data-act="scan-retry">Try again</button><button class="link quiet" data-act="scan-again">Scan again</button></div>`;
@@ -772,24 +785,130 @@ function isbnFormHTML() {
     `<input class="field" id="isbn-input" inputmode="numeric" autocomplete="off" placeholder="978…"><div class="rowbtns"><button class="btn" type="submit">Look it up</button></div></form>`;
 }
 function spineSubject() { return (scan.spineFor && state.mine.books.find(b => b.id === scan.spineFor)) || scan.found || {}; }
-function shootSpine() {
-  const v = $('#scan-video'); if (!v.videoWidth) { toast('The camera is not ready yet.'); return; }
-  const st = $('#scan-stage').getBoundingClientRect(), g = $('#spine-guide').getBoundingClientRect();
-  const sc = Math.max(st.width / v.videoWidth, st.height / v.videoHeight); // object-fit: cover
-  const ox = (st.width - v.videoWidth * sc) / 2, oy = (st.height - v.videoHeight * sc) / 2;
-  const sx = (g.left - st.left - ox) / sc, sy = (g.top - st.top - oy) / sc, sw = g.width / sc, sh = g.height / sc;
-  const cv = document.createElement('canvas'); cv.height = 520; cv.width = Math.max(24, Math.round(520 * g.width / g.height));
-  cv.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
-  scan.shot = cv.toDataURL('image/jpeg', 0.8);
-  scanPanel('spinecheck');
+/* Spine scanning: find the spine's edges live, take the photo when it holds still,
+   let the corners be corrected, then straighten it. */
+const spineCam = {timer: null, history: [], frame: document.createElement('canvas'), corners: null, last: null};
+function overlayView(svg, w, h, fit) {
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('preserveAspectRatio', `xMidYMid ${fit}`);
 }
+function drawQuad(svg, q, w, h, opts) {
+  opts = opts || {};
+  if (!q) { svg.innerHTML = ''; return; }
+  const pts = q.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  let html = `<path class="shade" d="M0 0H${w}V${h}H0Z M${q.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('L')}Z"></path><polygon points="${pts}"></polygon>`;
+  if (opts.handles) {
+    const r = opts.r;
+    html += q.map((p, i) => `<circle class="handle" data-corner="${i}" cx="${p.x}" cy="${p.y}" r="${r}"></circle><circle class="dot" cx="${p.x}" cy="${p.y}" r="${r * 0.18}"></circle>`).join('');
+  }
+  svg.innerHTML = html;
+}
+function spineStatus(kind, text) {
+  const el = $('#spine-state'); if (!el) return;
+  el.className = 'scanstate ' + kind; el.lastElementChild.textContent = text;
+}
+function stopSpineLoop() { clearTimeout(spineCam.timer); spineCam.timer = null; }
+function startSpineLoop() {
+  stopSpineLoop(); spineCam.history = []; spineCam.last = null;
+  const svg = $('#spine-overlay'); svg.classList.remove('edit', 'locked'); svg.innerHTML = '';
+  const step = () => {
+    if (scan.mode !== 'spine') return;
+    const v = $('#scan-video');
+    if (!v.videoWidth || !window.SpineScan) { spineCam.timer = setTimeout(step, 200); return; }
+    const W = v.videoWidth, H = v.videoHeight, t0 = performance.now();
+    let found = null;
+    try { found = SpineScan.detect(v, W, H); } catch (e) { found = null; }
+    if (scan.mode !== 'spine') return;
+    overlayView(svg, W, H, 'slice');
+    const hist = spineCam.history;
+    if (found) hist.push(found.corners); else hist.length = 0;
+    if (hist.length > 5) hist.shift();
+    let steady = false;
+    if (hist.length === 5) {
+      const tol = Math.max(W, H) * 0.012;
+      steady = [0, 1, 2, 3].every(i => {
+        const mx = hist.reduce((s, q) => s + q[i].x, 0) / 5, my = hist.reduce((s, q) => s + q[i].y, 0) / 5;
+        return hist.every(q => Math.hypot(q[i].x - mx, q[i].y - my) < tol);
+      });
+    }
+    svg.classList.toggle('locked', steady);
+    drawQuad(svg, found ? found.corners : null, W, H);
+    if (steady) {
+      const avg = [0, 1, 2, 3].map(i => ({x: hist.reduce((s, q) => s + q[i].x, 0) / 5, y: hist.reduce((s, q) => s + q[i].y, 0) / 5}));
+      captureSpine(avg);
+      return;
+    }
+    spineStatus(found ? 'seen' : '', found ? 'Found it. Hold still' : 'Looking for the spine');
+    spineCam.last = found ? found.corners : null;
+    spineCam.timer = setTimeout(step, Math.max(40, 120 - (performance.now() - t0)));
+  };
+  step();
+}
+function captureSpine(corners) {
+  const v = $('#scan-video'); if (!v.videoWidth) { toast('The camera is not ready yet.'); return; }
+  stopSpineLoop();
+  const W = v.videoWidth, H = v.videoHeight, f = spineCam.frame;
+  f.width = W; f.height = H; f.getContext('2d').drawImage(v, 0, 0, W, H);
+  if (!corners) {
+    // Nothing found: start from a centred upright box the shape of this book's spine.
+    const ph = physical(spineSubject()), hh = H * 0.7, ww = Math.min(W * 0.8, hh * ph.t / ph.h);
+    corners = [{x: (W - ww) / 2, y: (H - hh) / 2}, {x: (W + ww) / 2, y: (H - hh) / 2}, {x: (W + ww) / 2, y: (H + hh) / 2}, {x: (W - ww) / 2, y: (H + hh) / 2}];
+  }
+  spineCam.corners = corners.map(p => ({x: clamp(p.x, 0, W), y: clamp(p.y, 0, H)}));
+  try { if (navigator.vibrate) navigator.vibrate(30); } catch (e) {}
+  $('#spine-still').src = f.toDataURL('image/jpeg', 0.85);
+  scanPanel('spineadjust');
+  const svg = $('#spine-overlay');
+  svg.classList.remove('locked'); svg.classList.add('edit');
+  overlayView(svg, W, H, 'meet');
+  redrawHandles();
+}
+function stageScale() {
+  const f = spineCam.frame, st = $('#scan-stage').getBoundingClientRect();
+  return Math.min(st.width / f.width, st.height / f.height) || 1;
+}
+function redrawHandles() {
+  const f = spineCam.frame;
+  drawQuad($('#spine-overlay'), spineCam.corners, f.width, f.height, {handles: true, r: 22 / stageScale()});
+}
+(function bindHandles() {
+  const svg = $('#spine-overlay'); let drag = null;
+  const toFrame = e => { const m = svg.getScreenCTM(); if (!m) return null; const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()); return {x: pt.x, y: pt.y}; };
+  svg.addEventListener('pointerdown', e => {
+    if (scan.mode !== 'spineadjust') return;
+    const p = toFrame(e); if (!p) return;
+    const reach = 44 / stageScale();
+    let best = -1, bd = Infinity;
+    spineCam.corners.forEach((c, i) => { const d = Math.hypot(c.x - p.x, c.y - p.y); if (d < bd) { bd = d; best = i; } });
+    if (best < 0 || bd > reach) return;
+    e.preventDefault();
+    drag = {i: best, dx: spineCam.corners[best].x - p.x, dy: spineCam.corners[best].y - p.y};
+    try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const p = toFrame(e); if (!p) return;
+    const f = spineCam.frame;
+    spineCam.corners[drag.i] = {x: clamp(p.x + drag.dx, 0, f.width), y: clamp(p.y + drag.dy, 0, f.height)};
+    redrawHandles();
+  });
+  const end = () => { drag = null; };
+  svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
+})();
+function shootSpine() { captureSpine(spineCam.last); }
 function useSpine() {
-  const shot = safeSpine(scan.shot); if (!shot) { toast('That photo could not be used. Try again.'); return; }
+  let out;
+  try { out = SpineScan.warp(spineCam.frame, spineCam.corners, 640); } catch (e) { out = null; }
+  if (!out) { toast('That photo could not be used. Try again.'); return; }
+  let shot = out.canvas.toDataURL('image/jpeg', 0.8);
+  if (shot.length > 380000) shot = out.canvas.toDataURL('image/jpeg', 0.55);
+  shot = safeSpine(shot); if (!shot) { toast('That photo could not be used. Try again.'); return; }
+  const sr = Math.round(out.ratio * 1000) / 1000;
   if (scan.spineFor) {
     const b = state.mine.books.find(x => x.id === scan.spineFor);
-    if (b) { b.spine = shot; if (!saveMine()) b.spine = null; }
+    if (b) { const was = [b.spine, b.sr]; b.spine = shot; b.sr = sr; if (!saveMine()) [b.spine, b.sr] = was; }
     closeScanner(); if (b) placeBook(b);
-  } else if (scan.found) { scan.found.spine = shot; shelve(scan.found); }
+  } else if (scan.found) { scan.found.spine = shot; scan.found.sr = sr; shelve(scan.found); }
 }
 async function startCamera(next) {
   next = next || 'scanning';
@@ -811,6 +930,7 @@ async function startCamera(next) {
   scanPanel(next); if (next === 'scanning') tick();
 }
 function stopCamera() {
+  stopSpineLoop();
   clearTimeout(scan.timer);
   if (scan.stream) { scan.stream.getTracks().forEach(t => t.stop()); scan.stream = null; }
   $('#scan-video').srcObject = null;
@@ -846,7 +966,7 @@ function openScanner(fulfilId) {
 function closeScanner() { scan.mode = 'idle'; stopCamera(); hideOverlay($('#scanner')); }
 function shelve(data) {
   let b = scan.fulfil ? state.mine.books.find(x => x.id === scan.fulfil) : null;
-  const fields = {title: data.title, author: data.author || '', isbn: scan.isbn || '', publisher: data.publisher || '', published: data.published || '', pages: data.pages || 0, cover: data.cover || null, ratio: data.ratio || 0.66, owned: true, spine: data.spine || null, hmm: data.hmm || 0, wmm: data.wmm || 0, tmm: data.tmm || 0, dimsChecked: !!data.dimsChecked};
+  const fields = {title: data.title, author: data.author || '', isbn: scan.isbn || '', publisher: data.publisher || '', published: data.published || '', pages: data.pages || 0, cover: data.cover || null, ratio: data.ratio || 0.66, owned: true, spine: data.spine || null, sr: data.sr || 0, hmm: data.hmm || 0, wmm: data.wmm || 0, tmm: data.tmm || 0, dimsChecked: !!data.dimsChecked};
   if (b) Object.assign(b, cleanBook(Object.assign({}, b, fields)));
   else { b = cleanBook(Object.assign({id: uid(), status: 'toRead'}, fields)); state.mine.books.push(b); }
   closeScanner(); placeBook(b);

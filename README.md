@@ -39,7 +39,7 @@ With a Firebase project set in `firebase-config.js`, each person signs in once a
 ## Things to know
 
 - Books are drawn at their real height and thickness when Open Library records them; otherwise thickness comes from the page count and height is a standard paperback.
-- No catalogue offers photographs of book spines. After scanning the barcode you can photograph the spine with the camera, or do it later from the book view. Without a photo the spine is drawn from the cover's colours.
+- No catalogue offers photographs of book spines, so LibrAY scans them like a document: hold the book upright against a plain background and point the camera at the spine. It outlines the spine, takes the photo when you hold still, lets you drag any corner that is off, and straightens the image. The straightened photo also sets the book's thickness on the shelf. Without a photo the spine is drawn from the cover's colours.
 - If the catalogue has no record for an ISBN, you can type the title and author and shelve it anyway.
 - If the camera is refused, allow it under Settings > Safari > Camera, or type the ISBN.
 
@@ -50,5 +50,6 @@ With a Firebase project set in `firebase-config.js`, each person signs in once a
 | `index.html` | The whole app |
 | `zxing.min.js` | Barcode reader (ZXing, Apache 2.0 licence). Safari has no built-in one. |
 | `sync.js`, `firebase-config.js`, `firebase/` | Syncing through Firebase (Google's web SDK, Apache 2.0 licence) |
+| `spine-scan.js` | Finds the spine's edges in the camera image and straightens the photo |
 | `sw.js` | Lets the app open offline and keeps covers you have already seen |
 | `manifest.webmanifest`, `icon-*.png` | Home Screen name and icon |
