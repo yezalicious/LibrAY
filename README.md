@@ -56,6 +56,6 @@ With a Firebase project set in `firebase-config.js`, each person signs in once a
 | `zxing.min.js` | Barcode reader (ZXing, Apache 2.0 licence). Safari has no built-in one. |
 | `sync.js`, `firebase-config.js`, `firebase/` | Syncing through Firebase (Google's web SDK, Apache 2.0 licence) |
 | `spine-scan.js` | Finds the spine's edges in the camera image and straightens the photo |
-| `keepsakes.js` | Folded notes and pressed flowers |
+| `keepsakes.js`, `flowers/` | Folded notes and pressed flowers. The flowers are cut-outs from Pierre-Joseph Redouté's *Choix des plus belles fleurs* (1827), public domain, from scans on Wikimedia Commons. |
 | `sw.js` | Lets the app open offline and keeps covers you have already seen |
 | `manifest.webmanifest`, `icon-*.png` | Home Screen name and icon |

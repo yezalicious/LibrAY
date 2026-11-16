@@ -23,7 +23,9 @@
   ];
   const MAX_WORDS = 200, WEEK = 7 * 24 * 3600 * 1000;
   const SCRIPT = "'La Belle Aurore','Snell Roundhand','Apple Chancery',cursive";
-  const FLOWER = `<svg viewBox="0 0 60 92" aria-hidden="true"><path d="M30 34 C31 52 27 70 31 90" fill="none" stroke="#7C8A63" stroke-width="2" stroke-linecap="round"/><path d="M30 62 C40 54 47 56 50 50 C44 62 38 66 30 66Z" fill="#7C8A63"/><path d="M29 74 C20 68 14 70 11 64 C16 76 22 78 29 78Z" fill="#6B7955"/>${[0, 60, 120, 180, 240, 300].map(a => `<ellipse cx="30" cy="12" rx="7.5" ry="12" transform="rotate(${a} 30 26)" fill="#B5656B" stroke="#8E474F" stroke-width=".8" opacity=".93"/>`).join('')}<circle cx="30" cy="26" r="5.5" fill="#B08D57"/><circle cx="30" cy="26" r="2.2" fill="#8A6A3C"/></svg>`;
+  // Cut-outs from Pierre-Joseph Redouté's "Choix des plus belles fleurs" (1827), public domain.
+  const FLOWER_COUNT = 11;
+  const flowerImg = seed => `<img src="flowers/${String(1 + hash(String(seed)) % FLOWER_COUNT).padStart(2, '0')}.webp" alt="" draggable="false">`;
   const PEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"></path><path d="M15 4v4h4M9 13h6M9 16.5h4"></path></svg>';
 
   const style = document.createElement('style');
@@ -57,14 +59,15 @@
 #lc-text{width:min(340px,100%);height:min(46vh,430px);resize:none;border:0;outline:none;border-radius:2px;background:#EFE6D2;color:#2B2118;font-family:${SCRIPT};font-size:20px;line-height:1.4;padding:22px 20px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #lc-text::placeholder{color:#8C7B65}
 #lc-count{font-size:15px;color:var(--dust);font-style:italic}
-.flower{width:54px;height:83px;flex:none}
-.flower svg{width:100%;height:100%;display:block;filter:drop-shadow(0 3px 5px rgba(0,0,0,.45))}
+.flower{height:120px;flex:none}
+.flower img{height:100%;width:auto;max-width:none;display:block;filter:drop-shadow(0 0 .6px #EFE6D2) drop-shadow(0 5px 7px rgba(0,0,0,.5))}
 .flowerbox{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
 .flowerbox p{font-style:italic;color:var(--dust);font-size:16px;max-width:30ch}
 @keyframes flowerfall{0%{transform:translateY(-70px) rotate(-50deg) scale(.3);opacity:0}55%{transform:translateY(6px) rotate(14deg) scale(1.08);opacity:1}100%{transform:rotate(-8deg) scale(1);opacity:1}}
-.flowerbox.fresh .flower{width:74px;height:113px;animation:flowerfall 1.5s .75s cubic-bezier(.2,.7,.3,1) both}
+.flowerbox.fresh .flower{height:190px;animation:flowerfall 1.5s .75s cubic-bezier(.2,.7,.3,1) both}
 .flowerbox .flower{transform:rotate(-8deg)}
-.btn .flower{width:20px;height:31px;transform:none}
+.btn .flower{height:34px;transform:none}
+.btn .flower img{filter:none}
 #flowernotice{z-index:40;display:flex;align-items:center;justify-content:center;padding:24px}
 #fn-card{width:min(360px,100%);background:var(--walnut);border:1px solid rgba(176,141,87,.55);border-radius:14px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;transform:translateY(16px);opacity:0;transition:transform .5s,opacity .5s}
 #flowernotice.open #fn-card{transform:none;opacity:1}
@@ -254,7 +257,7 @@
       if (!ro) {
         const here = incomingFlowers().filter(f => f.target === b.id); if (!here.length) return '';
         const fresh = here.some(f => !f.found), last = here[here.length - 1];
-        return `<div class="flowerbox${fresh ? ' fresh' : ''}"><div class="flower">${FLOWER}</div>` +
+        return `<div class="flowerbox${fresh ? ' fresh' : ''}"><div class="flower">${flowerImg(last.id)}</div>` +
           `<p>${fresh ? `${esc(partnerName(s))} hid a flower in this book.` : `A flower from ${esc(partnerName(s))}, pressed here ${esc(fmtDate(last.at))}.`}</p></div>`;
       }
       if (!b.owned || b.status !== 'reading') return '';
@@ -262,12 +265,12 @@
       let h = '';
       if (mineHere.length) {
         const f = mineHere[mineHere.length - 1];
-        h += `<div class="flowerbox"><div class="flower">${FLOWER}</div><p>Your flower is pressed in this book. ${found.has(f.id) ? 'It has been found.' : 'It is waiting to be found.'}</p></div>`;
+        h += `<div class="flowerbox"><div class="flower">${flowerImg(f.id)}</div><p>Your flower is pressed in this book. ${found.has(f.id) ? 'It has been found.' : 'It is waiting to be found.'}</p></div>`;
       }
       const wait = nextFlowerAt();
       h += wait > Date.now()
         ? `<p class="edition">One flower a week. The next can be hidden on ${esc(fmtDate(new Date(wait).toISOString()))}.</p>`
-        : `<button class="btn" data-act="flower-send" data-id="${esc(b.id)}"><span class="flower">${FLOWER}</span> Hide a flower in this book</button>`;
+        : `<button class="btn" data-act="flower-send" data-id="${esc(b.id)}"><span class="flower">${flowerImg('button')}</span> Hide a flower in this book</button>`;
       return h;
     },
     bookOpened(b, ro) {
