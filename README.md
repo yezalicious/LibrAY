@@ -34,7 +34,8 @@ Removing the icon from the Home Screen deletes the books stored in it.
 
 ## Things to know
 
-- No catalogue offers photographs of book spines. Each spine is drawn from the cover's own colours, sized by page count, with the title set on a label.
+- Books are drawn at their real height and thickness when Open Library records them; otherwise thickness comes from the page count and height is a standard paperback.
+- No catalogue offers photographs of book spines. After scanning the barcode you can photograph the spine with the camera, or do it later from the book view. Without a photo the spine is drawn from the cover's colours.
 - If the catalogue has no record for an ISBN, you can type the title and author and shelve it anyway.
 - If the camera is refused, allow it under Settings > Safari > Camera, or type the ISBN.
 
